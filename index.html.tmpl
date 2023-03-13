@@ -14,7 +14,7 @@
     </label>
     <label>
         <p>Or send a file (max.: 100KB):</p>
-        <input type="file"/>
+        <input id="fileinput" type="file"/>
     </label>
 
     <p>
@@ -23,44 +23,34 @@
 </form>
 
 <script>
-    async function sendData(url, data) {
-        const formData  = new FormData();
+    // Select your input type file and store it in a variable
+    const input = document.getElementById('fileinput');
 
-        for(const name in data) {
-            formData.append(name, data[name]);
-        }
+    // This will upload the file after having read it
+    const upload = (file) => {
+    fetch('/', { // Your POST endpoint
+        method: 'POST',
+        headers: {
+        // Content-Type may need to be completely **omitted**
+        // or you may need something
+        // "Content-Type": "You will perhaps need to define a content-type here"
+        },
+        body: file // This is your file object
+    }).then(
+        response => response.json() // if the response is a JSON object
+    ).then(
+        success => console.log(success) // Handle the success response object
+    ).catch(
+        error => console.log(error) // Handle the error response object
+    );
+    };
 
-        const response = await fetch(url, {
-            method: 'POST',
-            body: formData
-        });
+    // Event handler executed when a file is selected
+    const onSelectFile = () => upload(input.files[0]);
 
-        console.log(response);
-
-        // ...
-    }
-
-    document.querySelector("button").addEventListener("click", function (e) {
-        e.preventDefault()
-        let text = document.querySelector("textarea").value
-        console.log("Text:");
-        console.log(text);
-
-        let file = document.querySelector("input");
-
-        console.log("File");
-        console.log(file.files);
-
-        if (file.files[0]) {
-            if (file.files[0].size > 100000) {
-                console.log("File greater than 100KB");
-                return
-            }
-        }
-
-        sendData("/", file.files[0]);
-        console.log(file.files[0])
-    });
+    // Add a listener on your input
+    // It will be triggered when a file will be selected
+    input.addEventListener('change', onSelectFile, false);
 </script>
 
 </body>

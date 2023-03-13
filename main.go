@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"embed"
-	"fmt"
+	"encoding/json"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -24,19 +25,25 @@ func main() {
 	data := struct {
 		Title string
 	}{
-		Title: "Onetime",
+		Title: "BurnIt",
+	}
+
+	type responseBody struct {
+		Status  string `json:"status"`
+		Data    any    `json:"data,omitempty"`
+		Message string `json:"message"`
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/", func() http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			log.Println(fmt.Sprintf(
-				`time=%s path=%s method=%s`,
+			log.Printf(
+				`time=%s path=%s method=%s\n`,
 				time.Now().Format(time.RFC3339), r.URL.Path, r.Method,
-			))
+			)
 
-			if r.URL.Path == "/icon.png" && r.Method == "GET" {
+			if (r.URL.Path == "/icon.png" || r.URL.Path == "/favicon.ico") && r.Method == "GET" {
 				file, _ := files.ReadFile("icon.png")
 				_, _ = w.Write(file)
 				return
@@ -45,18 +52,67 @@ func main() {
 			if r.URL.Path == "/" && r.Method == "GET" {
 				err := t.Execute(w, data)
 				if err != nil {
-					log.Println(fmt.Sprintf("Error: %s", err.Error()))
+					log.Printf("Error: %s", err.Error())
 				}
 				return
 			}
 
 			if r.URL.Path == "/" && r.Method == "POST" {
-				// TODO
+				log.Println("Body", r.Body)
+
+				maxMem := 10
+				bytes := make([]byte, maxMem)
+				content := []byte{}
+				var size int
+
+				for {
+					read, err := r.Body.Read(bytes)
+					size += read
+					content = append(content, bytes...)
+
+					if size >= 1024 {
+						rb := responseBody{
+							Status:  "error",
+							Message: "Max size: 1Mb",
+						}
+
+						b, _ := json.Marshal(rb)
+						w.Write(b)
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+
+					if err == io.EOF {
+						log.Println("EOF!")
+						break
+					}
+				}
+
+				log.Printf("Size is %d\n", size)
+				log.Printf("Bytes: %s\n", bytes)
+				log.Printf("Content: %s\n", content)
+
+				// OK
+				// defer r.Body.Close()
+				// f, e := os.Create("file.txt")
+				// if e != nil {
+				// 	panic(e)
+				// }
+				// defer f.Close()
+				// f.ReadFrom(r.Body)
+
+				// copy example
+				// f, err := os.OpenFile(handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
+				// if err != nil {
+				// 	panic(err) //please dont
+				// }
+				// defer f.Close()
+				// io.Copy(f, file)
+
 				return
 			}
 
 			w.WriteHeader(http.StatusNotFound)
-			return
 		})
 	}(),
 	)
