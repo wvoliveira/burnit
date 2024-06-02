@@ -7,9 +7,9 @@ import (
 
 const AppVersion = "0.0.1"
 
-const ServerPort = 8080
-const ServerReadTimeout = 10 * time.Second
-const ServerWriteTimeout = 10 * time.Second
+const HTTPServerPort = 8080
+const HTTPServerReadTimeout = 10 * time.Second
+const HTTPServerWriteTimeout = 10 * time.Second
 
 const MongoDBTimeout = 10 * time.Second
 const MongoDBDatabase = "burnit"

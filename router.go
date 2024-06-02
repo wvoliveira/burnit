@@ -2,23 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
-	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"runtime"
 	"time"
 )
-
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf(
-			`time=%s path=%s method=%s`,
-			time.Now().Format(time.RFC3339), r.URL.Path, r.Method,
-		)
-		next.ServeHTTP(w, r)
-	})
-}
 
 func errorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	log.Println("Error:", err.Error())
@@ -37,17 +28,28 @@ func iconFileHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "image/png")
 	_, err = w.Write(file)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, err = w.Write([]byte(err.Error()))
-		errorHandler(w, r, err)
+		if err != nil {
+			errorHandler(w, r, err)
+		}
 	}
 }
 
 func scriptFileHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("content-type", "text/javascript;chartset=utf-8")
 	file, err := scriptFile()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			errorHandler(w, r, err)
+		}
+	}
+
+	w.Header().Add("Content-type", "text/javascript;chartset=utf-8")
 	_, err = w.Write(file)
 	if err != nil {
 		log.Println("Error to write:", err.Error())
@@ -75,7 +77,21 @@ func keyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
-	_, err = w.Write([]byte(content))
+	response := responseBodyJSON{
+		Status:   "ok",
+		Key:      content.Key,
+		Text:     content.Text,
+		FileName: content.FileName,
+		File:     content.File,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		errorHandler(w, r, err)
+		return
+	}
+
+	_, err = w.Write(responseBytes)
 	if err != nil {
 		log.Println("Error to write:", err.Error())
 		return
@@ -112,47 +128,52 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func createContentHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Body", r.Body)
+	err := r.ParseMultipartForm(1 << 20) // 1 MB limit
+	if err != nil {
+		http.Error(w, "Unable to parse form", http.StatusBadRequest)
+		return
+	}
 
-	maxMem := 10
-	bytes := make([]byte, maxMem)
-	var content []byte
-	var size int
+	file, fileHandler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Unable to get the file", http.StatusBadRequest)
+		return
+	}
+	defer func(file multipart.File) {
+		_ = file.Close()
+	}(file)
 
-	for {
-		read, err := r.Body.Read(bytes)
-		size += read
-		content = append(content, bytes...)
+	// Get the content from the textarea
+	textContent := r.FormValue("text")
+	fmt.Printf("Received content: %s\n", textContent)
 
-		if size > 1000 {
-			rb := responseBody{
-				Status:  "error",
-				Message: "Max size: 1000 bytes",
-			}
+	size := len(textContent)
+	fmt.Println("Length:", size)
 
-			b, err := json.Marshal(rb)
-			if err != nil {
-				errorHandler(w, r, err)
-			}
-
-			w.WriteHeader(http.StatusBadRequest)
-
-			_, err = w.Write(b)
-			if err != nil {
-				errorHandler(w, r, err)
-			}
-			return
+	if size > 1000 {
+		rb := responseBody{
+			Status:  "error",
+			Message: "Max size: 1000 bytes",
 		}
 
-		if err == io.EOF {
-			break
+		b, err := json.Marshal(rb)
+		if err != nil {
+			errorHandler(w, r, err)
 		}
+
+		w.WriteHeader(http.StatusBadRequest)
+
+		_, err = w.Write(b)
+		if err != nil {
+			errorHandler(w, r, err)
+		}
+		return
 	}
 
 	log.Printf("Size is %d\n", size)
-	log.Printf("Content: %s\n", content)
+	log.Printf("Content: %s\n", textContent)
 
-	key, err := createKey(content)
+	key, err := createKey(fileHandler.Filename, file, []byte(textContent))
 	if err != nil {
 		errorHandler(w, r, err)
 	}
@@ -205,20 +226,23 @@ func delayHandler(w http.ResponseWriter, r *http.Request) {
 func Router() *mux.Router {
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware)
+	r.Use(headersMiddleware)
+
 	r.HandleFunc("/icon.png", iconFileHandler).Methods("GET")
 	r.HandleFunc("/favicon.ico", iconFileHandler).Methods("GET")
 	r.HandleFunc("/script.js", scriptFileHandler).Methods("GET")
 
 	r.HandleFunc("/", keyHandler).Methods("GET").Queries("key", "{key}")
 	r.HandleFunc("/", rootHandler).Methods("GET")
-	r.HandleFunc("/", createContentHandler).Methods("POST")
 
-	r.HandleFunc("/info", infoHandler).Methods("GET")
-	r.HandleFunc("/healthcheck", healthcheckHandler).Methods("GET")
-	r.HandleFunc("/healthcheck/live", healthcheckHandler).Methods("GET")
-	r.HandleFunc("/healthcheck/ready", healthcheckHandler).Methods("GET")
+	r.HandleFunc("/api/content", createContentHandler).Methods("POST")
+
+	r.HandleFunc("/api/info", infoHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck", healthcheckHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck/live", healthcheckHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck/ready", healthcheckHandler).Methods("GET")
 
 	// Handlers to help to test some theories. Ex.: graceful shutdown
-	r.HandleFunc("/test/delay", delayHandler).Methods("GET")
+	r.HandleFunc("/api/test/delay", delayHandler).Methods("GET")
 	return r
 }

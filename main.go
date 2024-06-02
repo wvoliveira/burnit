@@ -48,10 +48,10 @@ func main() {
 
 	router := Router()
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", ServerPort),
+		Addr:         fmt.Sprintf(":%d", HTTPServerPort),
 		Handler:      router,
-		ReadTimeout:  ServerReadTimeout,
-		WriteTimeout: ServerWriteTimeout,
+		ReadTimeout:  HTTPServerReadTimeout,
+		WriteTimeout: HTTPServerWriteTimeout,
 	}
 
 	closeIdleConnections := make(chan struct{})
