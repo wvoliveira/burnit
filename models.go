@@ -13,3 +13,8 @@ type responseBody struct {
 	Data    any    `json:"data,omitempty"`
 	Message string `json:"message"`
 }
+
+type responseInfoBody struct {
+	AppVersion    any    `json:"app_version"`
+	GolangVersion string `json:"golang_version"`
+}

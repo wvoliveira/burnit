@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime"
 	"time"
 )
 
@@ -71,8 +72,8 @@ func keyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(200)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	_, err = w.Write([]byte(content))
 	if err != nil {
@@ -166,6 +167,7 @@ func createContentHandler(w http.ResponseWriter, r *http.Request) {
 		errorHandler(w, r, err)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(b)
 	if err != nil {
@@ -175,6 +177,27 @@ func createContentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func healthcheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
+}
+
+func infoHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	body := responseInfoBody{
+		AppVersion:    AppVersion,
+		GolangVersion: runtime.Version(),
+	}
+
+	content, err := json.Marshal(body)
+	if err != nil {
+		errorHandler(w, r, err)
+	}
+
+	_, _ = w.Write(content)
+}
+
+func delayHandler(w http.ResponseWriter, r *http.Request) {
+	time.Sleep(5 * time.Second)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
 }
@@ -190,8 +213,12 @@ func Router() *mux.Router {
 	r.HandleFunc("/", rootHandler).Methods("GET")
 	r.HandleFunc("/", createContentHandler).Methods("POST")
 
+	r.HandleFunc("/info", infoHandler).Methods("GET")
 	r.HandleFunc("/healthcheck", healthcheckHandler).Methods("GET")
 	r.HandleFunc("/healthcheck/live", healthcheckHandler).Methods("GET")
 	r.HandleFunc("/healthcheck/ready", healthcheckHandler).Methods("GET")
+
+	// Handlers to help to test some theories. Ex.: graceful shutdown
+	r.HandleFunc("/test/delay", delayHandler).Methods("GET")
 	return r
 }
