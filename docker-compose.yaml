@@ -8,4 +8,4 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ./data:/data/db:Z,U
+      - ./.data/mongodb:/data/db:Z,U
