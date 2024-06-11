@@ -4,15 +4,14 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
-
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 //go:embed icon.png index.html script.js
@@ -27,15 +26,15 @@ func init() {
 }
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), MongoDBTimeout)
 	defer cancel()
+
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(MongoDBURI))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	dbClient = *client
-
 	err = dbClient.Ping(ctx, readpref.Primary())
 	if err != nil {
 		log.Fatal(err)
@@ -48,12 +47,11 @@ func main() {
 	}()
 
 	router := Router()
-
 	srv := &http.Server{
-		Addr:         ":8080",
+		Addr:         fmt.Sprintf(":%d", HTTPServerPort),
 		Handler:      router,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
+		ReadTimeout:  HTTPServerReadTimeout,
+		WriteTimeout: HTTPServerWriteTimeout,
 	}
 
 	closeIdleConnections := make(chan struct{})
@@ -63,7 +61,7 @@ func main() {
 		<-sigint
 
 		if err := srv.Shutdown(context.Background()); err != nil {
-			log.Printf("HTTP server Shutdown: %v", err)
+			log.Printf("Error to HTTP server Shutdown: %v", err)
 		}
 		close(closeIdleConnections)
 	}()
@@ -75,6 +73,7 @@ func main() {
 		log.Fatalf("HTTP server ListenAndServe: %v", err)
 	}
 
-	log.Println("Bye!")
+	log.Println("Initializing shutdown HTTP server...")
 	<-closeIdleConnections
+	log.Println("HTTP server closed with success!")
 }

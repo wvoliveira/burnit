@@ -7,17 +7,22 @@
 </head>
 <body>
 
-<form id="form">
+<form id="form" method="POST" enctype="multipart/form-data">
     <div>
-        <label for="secret">Type the secret content (max.: 1000 chars):</label>
-        <p />
-        <textarea id="secret" name="secret" rows="10" cols="50" maxlength="1001" placeholder="s3cr3t c0nt3nt"></textarea>
+        <label for="text">Type the secret content (max.: 1000 chars):</label>
+        <p></p>
+        <textarea id="text" name="text" rows="10" cols="50" maxlength="1000" required></textarea>
     </div>
-    <div id="message"></div>
+    <p></p>
+        <label for="file">You can send a file too (max.: 1 Mb):</label>
+        <p></p>
+        <input id="file" name="file" type="file" />
     <p>
         <input id="submit" type="submit" value="Submit" />
     </p>
 </form>
+
+<div id="message"></div>
 
 <script src="script.js"></script>
 
