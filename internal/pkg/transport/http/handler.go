@@ -1,15 +1,48 @@
-package main
+package http
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"runtime"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/wvoliveira/burnit/internal/pkg/config"
+	"github.com/wvoliveira/burnit/internal/pkg/endpoint"
+	"github.com/wvoliveira/burnit/internal/pkg/model"
 )
+
+func NewHTTPHandler(endpoints endpoint.Set, logger *log.Logger) *mux.Router {
+	r := mux.NewRouter()
+	r.Use(loggingMiddleware)
+	r.Use(headersMiddleware)
+
+	// HTTP endpoints for embeded web app.
+	// Open app in your browser to look the "nice" web interface.
+	r.HandleFunc("/", keyHandler).Methods("GET").Queries("key", "{key}")
+	r.HandleFunc("/", rootHandler).Methods("GET")
+	r.HandleFunc("/icon.png", iconFileHandler).Methods("GET")
+	r.HandleFunc("/favicon.ico", iconFileHandler).Methods("GET")
+	r.HandleFunc("/script.js", scriptFileHandler).Methods("GET")
+
+	// HTTP API REST endpoints.
+	// The entry point of the API becomes here.
+	r.HandleFunc("/api/content", createContentHandler).Methods("POST")
+
+	// HTTP endpoints for app healthcheck.
+	// Useful for most of orchestration tools.
+	r.HandleFunc("/api/info", infoHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck", healthcheckHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck/live", healthcheckHandler).Methods("GET")
+	r.HandleFunc("/api/healthcheck/ready", healthcheckHandler).Methods("GET")
+
+	// Handlers to help to test some HTTP functions. Ex.: Graceful shutdown
+	r.HandleFunc("/api/test/delay", delayHandler).Methods("GET")
+	return r
+}
 
 func errorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	log.Println("Error:", err.Error())
@@ -77,7 +110,7 @@ func keyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
-	response := responseBodyJSON{
+	response := model.ResponseBodyJSON{
 		Status:   "ok",
 		Key:      content.Key,
 		Text:     content.Text,
@@ -151,7 +184,7 @@ func createContentHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Length:", size)
 
 	if size > 1000 {
-		rb := responseBody{
+		rb := model.ResponseBody{
 			Status:  "error",
 			Message: "Max size: 1000 bytes",
 		}
@@ -178,7 +211,7 @@ func createContentHandler(w http.ResponseWriter, r *http.Request) {
 		errorHandler(w, r, err)
 	}
 
-	rb := responseBody{
+	rb := model.ResponseBody{
 		Status:  "ok",
 		Message: key,
 	}
@@ -204,8 +237,8 @@ func healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 
 func infoHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	body := responseInfoBody{
-		AppVersion:    AppVersion,
+	body := model.ResponseInfoBody{
+		AppVersion:    config.AppVersion,
 		GolangVersion: runtime.Version(),
 	}
 
@@ -221,28 +254,4 @@ func delayHandler(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(5 * time.Second)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
-}
-
-func Router() *mux.Router {
-	r := mux.NewRouter()
-	r.Use(loggingMiddleware)
-	r.Use(headersMiddleware)
-
-	r.HandleFunc("/icon.png", iconFileHandler).Methods("GET")
-	r.HandleFunc("/favicon.ico", iconFileHandler).Methods("GET")
-	r.HandleFunc("/script.js", scriptFileHandler).Methods("GET")
-
-	r.HandleFunc("/", keyHandler).Methods("GET").Queries("key", "{key}")
-	r.HandleFunc("/", rootHandler).Methods("GET")
-
-	r.HandleFunc("/api/content", createContentHandler).Methods("POST")
-
-	r.HandleFunc("/api/info", infoHandler).Methods("GET")
-	r.HandleFunc("/api/healthcheck", healthcheckHandler).Methods("GET")
-	r.HandleFunc("/api/healthcheck/live", healthcheckHandler).Methods("GET")
-	r.HandleFunc("/api/healthcheck/ready", healthcheckHandler).Methods("GET")
-
-	// Handlers to help to test some theories. Ex.: graceful shutdown
-	r.HandleFunc("/api/test/delay", delayHandler).Methods("GET")
-	return r
 }

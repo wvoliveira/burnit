@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 
 const AppVersion = "0.0.1"
 
-const HTTPServerPort = 8080
+const HTTPServerPort = "8080"
 const HTTPServerReadTimeout = 10 * time.Second
 const HTTPServerWriteTimeout = 10 * time.Second
 

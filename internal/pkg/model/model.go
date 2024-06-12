@@ -1,24 +1,26 @@
-package main
+package model
 
 import (
+	"mime/multipart"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type requestBody struct {
+type RequestBody struct {
 	ID       primitive.ObjectID `bson:"_id"`
 	Key      string             `json:"key"`
-	Text     string             `json:"text"`
+	Text     []byte             `json:"text"`
 	FileName string             `json:"file_name"`
-	File     []byte             `json:"file"`
+	File     multipart.File     `json:"file"`
 }
 
-type responseBody struct {
+type ResponseBody struct {
 	Status  string `json:"status"`
 	Data    any    `json:"data,omitempty"`
 	Message string `json:"message"`
 }
 
-type responseBodyJSON struct {
+type ResponseBodyJSON struct {
 	Status   string `json:"status"`
 	Key      string `json:"key"`
 	Text     string `json:"text"`
@@ -26,7 +28,7 @@ type responseBodyJSON struct {
 	File     []byte `json:"file"`
 }
 
-type responseInfoBody struct {
+type ResponseInfoBody struct {
 	AppVersion    any    `json:"app_version"`
 	GolangVersion string `json:"golang_version"`
 }
