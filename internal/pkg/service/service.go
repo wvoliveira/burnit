@@ -4,109 +4,99 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 
 	"github.com/rs/xid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/go-kit/log"
 	"github.com/wvoliveira/burnit/internal/pkg/config"
 	e "github.com/wvoliveira/burnit/internal/pkg/error"
-	"github.com/wvoliveira/burnit/internal/pkg/model"
 )
 
 type Service interface {
 	Create(ctx context.Context, fileName string, file multipart.File, text []byte) (key string, err error)
 }
 
-func New(log *log.Logger, mongonClient mongo.Client) Service {
+func New(log *log.Logger, kvClient mongo.Client) Service {
 	var service Service
 	{
-		service = NewService(mongonClient)
+		service = NewService(kvClient)
 	}
 	return service
 }
 
-func NewService(mongonClient mongo.Client) Service {
+func NewService(kvClient mongo.Client) Service {
 	return service{
-		mongoClient: mongonClient,
+		kvClient: kvClient,
 	}
 }
 
 type service struct {
-	mongoClient mongo.Client
+	kvClient mongo.Client
 }
 
 func (s service) Create(ctx context.Context, fileName string, file multipart.File, text []byte) (key string, err error) {
-	coll := s.mongoClient.Database(config.MongoDBDatabase).Collection("keys")
+	coll := s.kvClient.Database(config.MongoDBDatabase).Collection("keys")
 	guid := xid.New()
 	key = guid.String()
 
 	fileContent := fileToBytes(file)
 
 	res, err := coll.InsertOne(context.TODO(), bson.D{
-		{"key", key},
-		{"text", text},
-		{"file_name", fileName},
-		{"file", fileContent},
+		{Key: "key", Value: guid.String()},
+		{Key: "text", Value: text},
+		{Key: "file_name", Value: fileName},
+		{Key: "file", Value: fileContent},
 	})
 	if err != nil {
-		log.Println("Error: ", err.Error())
 		return
 	}
 
-	log.Println("ID inserted:", res.InsertedID)
-
-	data, err := json.MarshalIndent(res, "", "    ")
+	_, err = json.MarshalIndent(res, "", "    ")
 	if err != nil {
-		log.Println("Error to marshal with indent: ", err.Error())
 		return
 	}
 
-	fmt.Printf("%s\n", data)
-	return
+	return key, nil
 }
 
-func (s service) Read(ctx context.Context, key string) (model.RequestBody, error) {
-	coll := s.mongoClient.Database(config.MongoDBDatabase).Collection("keys")
-	filter := bson.D{{"key", key}}
+func (s service) Read(ctx context.Context, key string) (primitive.ObjectID, string, []byte, string, multipart.File, error) {
+	coll := s.kvClient.Database(config.MongoDBDatabase).Collection("keys")
+	filter := bson.D{{Key: "key", Value: key}}
 
-	var result requestBody
-	err := coll.FindOne(context.TODO(), filter).Decode(&result)
+	var r = new(struct {
+		ID       primitive.ObjectID `bson:"_id"`
+		Key      string
+		Text     []byte
+		FileName string
+		File     multipart.File
+	})
+	err := coll.FindOne(context.TODO(), filter).Decode(&r)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		log.Println("MongoDB: record does not exist")
-		return result, e.ErrMongoDBNoDocuments
+		return r.ID, r.Key, r.Text, r.FileName, r.File, e.ErrMongoDBNoDocuments
 	}
 
 	if err != nil {
-		log.Println("MongoDB:", err.Error())
-		return result, e.ErrInternalServer
+		return r.ID, r.Key, r.Text, r.FileName, r.File, e.ErrInternalServer
 	}
-
-	log.Println("Key: ", key)
-	log.Println("Text: ", result.Text)
-	log.Println("File name: ", result.FileName)
-	log.Println("File: ", result.File)
-
 	defer s.Delete(key)
-	return result, nil
+	return r.ID, r.Key, r.Text, r.FileName, r.File, nil
 }
 
 func (s service) Delete(key string) {
-	coll := s.mongoClient.Database(config.MongoDBDatabase).Collection("keys")
-	filter := bson.D{{"key", key}}
+	coll := s.kvClient.Database(config.MongoDBDatabase).Collection("keys")
+	filter := bson.D{{Key: "key", Value: key}}
 
 	_, err := coll.DeleteOne(context.TODO(), filter)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		log.Println("MongoDB:: record does not exist")
 		return
 	}
 
 	if err != nil {
-		log.Println("MongoDB:", err.Error())
 		return
 	}
 }
